@@ -44,6 +44,25 @@ def preprocess_df(df, verbose=False):
     return df
 
 
+def create_index_dict(df):
+    """
+    Creates a dictionary of word indexes.
+    """
+    word_index = {}
+    for i, row in df.iterrows():
+        for word in row['content'].split():
+            if word not in word_index:
+                word_index[word] = {-1: 1}  # -1 holds count of the word in all documents
+                word_index[word][i] = 1  # i holds count of the word in document i
+            else:
+                word_index[word][-1] += 1
+                if i not in word_index[word]:
+                    word_index[word][i] = 1
+                else:
+                    word_index[word][i] += 1
+    return word_index
+
+
 if __name__ == '__main__':
     # Load dataframe
     df = load_df('data/raw_data.json')
@@ -53,3 +72,7 @@ if __name__ == '__main__':
 
     # Save dataframe
     # df.to_json('data/preprocessed_data.json')
+
+    # Create index dictionary
+    word_index = create_index_dict(df)
+    print(word_index['فوتبال'])
