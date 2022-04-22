@@ -1,3 +1,5 @@
+from itertools import cycle
+
 from hazm import Normalizer, word_tokenize, stopwords_list, Stemmer
 import numpy as np
 import pandas as pd
@@ -85,59 +87,130 @@ def create_index_dict(df, column_name):
     return word_index
 
 
-def query_to_index(query, word_index, preprocessed=False):
+def exclude_indexes(indexes, excluded_indexes):
     """
-    Converts a query to a list of word indexes.
+    Excludes sorted indexes from a sorted list.
     """
-    if not preprocessed:
-        query = preprocess_query(query)
-    return [word_index[word] for word in query.split()]
-
-
-def single_word_query(word, word_index):
-    """
-    Answers to a single word query and sorts the results.
-    """
-    if word not in word_index:
-        return []
-
-    posting_list = word_index[word]['docs']
-    result = sorted(posting_list, key=lambda x: posting_list[x]['count'], reverse=True)
+    result = []
+    i = 0
+    j = 0
+    while i < len(indexes) and j < len(excluded_indexes):
+        if indexes[i] < excluded_indexes[j]:
+            result.append(indexes[i])
+            i += 1
+        elif indexes[i] > excluded_indexes[j]:
+            j += 1
+        else:
+            i += 1
+            j += 1
+    if indexes[-1] > excluded_indexes[-1]:
+        result.append(indexes[-1])
     return result
 
 
-def multiple_word_query(query, word_index):
+def multi_intersect_indexes(lists):
     """
-    Answers to a multiple word query and sorts the results.
+    Intersects multiple sorted indexes.
     """
-    posting_lists = query_to_index(query, word_index)
+    if len(lists) == 1:
+        return lists[0]
 
-    result = list(posting_lists[0]['docs'].keys())
-    for posting_list in posting_lists[1:]:
-        index = list(posting_list['docs'].keys())
-        result = intersect_indexes(result, index)
-    ranked_result = np.zeros(len(result))
-    for p in posting_lists:
-        ranked_result += [p['docs'][i]['count'] for i in result]
-    return [x for y, x in sorted(zip(ranked_result, result), reverse=True)]
+    result = []
+    maxval = float("-inf")
+    consecutive = 0
+    try:
+        for sublist in cycle(iter(sublist) for sublist in lists):
+
+            value = next(sublist)
+            while value < maxval:
+                value = next(sublist)
+
+            if value > maxval:
+                maxval = value
+                consecutive = 0
+                continue
+
+            consecutive += 1
+            if consecutive >= len(lists) - 1:
+                result.append(maxval)
+                consecutive = 0
+
+    except StopIteration:
+        return result
 
 
-def intersect_indexes(index1, index2):
+def intersect_two_indexes(indexes1, indexes2):
     """
     Intersects two sorted indexes.
     """
     result = []
     i = 0
     j = 0
-    while i < len(index1) and j < len(index2):
-        if index1[i] == index2[j]:
-            result.append(index1[i])
+    while i < len(indexes1) and j < len(indexes2):
+        if indexes1[i] == indexes2[j]:
+            result.append(indexes1[i])
             i += 1
             j += 1
-        elif index1[i] < index2[j]:
+        elif indexes1[i] < indexes2[j]:
             i += 1
         else:
             j += 1
+    return result
+
+
+def multiple_word_query(words, word_index):
+    """
+    Answers to a multiple word query and sorts the results.
+    """
+    posting_lists = [word_index[word] for word in words]
+    lists = [list(p['docs'].keys()) for p in posting_lists]
+    result = multi_intersect_indexes(lists)
+    ranked_result = np.zeros(len(result))
+    for p in posting_lists:
+        ranked_result += [p['docs'][i]['count'] for i in result]
+    # return [x for x, y in sorted(zip(ranked_result, result), reverse=True)]
+    return dict(zip(result, ranked_result))
+
+
+def phrasal_query(phrasal_words, word_index):
+    """
+    Answers to a phrasal query and sorts the results.
+    """
+    return {}
+
+
+def query(query, word_index, preprocessed=True):
+    """
+    Answers a query and sorts the results.
+    supported operands: 1. double quotes("") for phrasal queries.
+                        2. ! for negation.
+                        3. otherwise intersects words.
+    """
+    if not preprocessed:
+        query = preprocess_query(query)
+    if len(query.split()) == 1:
+        word = query.split()[0]
+        if word not in word_index:
+            return []
+        posting_list = word_index[word]['docs']
+        return sorted(posting_list, key=lambda x: posting_list[x]['count'], reverse=True)
+    else:
+        phrasal_words = re.findall(r'"(.*?)"', query)
+        excluded_words = re.findall(r'!(.*?)!', query)
+        other_words = re.sub(r'"(.*?)"|!(.*?)!', '', query).split()
+
+        result = []
+        if phrasal_words:
+            result = phrasal_query(phrasal_words, word_index).keys()
+        if other_words:
+            if phrasal_words:
+                result = intersect_two_indexes(result, multiple_word_query(other_words, word_index).keys())
+            else:
+                result = list(multiple_word_query(other_words, word_index).keys())
+        if excluded_words:
+            for word in excluded_words:
+                if word in word_index:
+                    result = exclude_indexes(result, list(word_index[word]['docs'].keys()))
     return result
 
 
@@ -155,7 +228,13 @@ if __name__ == '__main__':
     word_index = create_index_dict(df, column_name='content')
 
     # Single word query
-    print(single_word_query('بسکتبال', word_index))
+    print(query('فوتبال', word_index))
+    print(query('لیگ', word_index))
 
-    # # Multiple word query
-    print(multiple_word_query('بسکتبال لیگ', word_index))
+    # Multiple word query
+    print(query('بسکتبال لیگ', word_index))
+    print(query('فوتبال لیگ', word_index))
+
+    # Excluded word query
+    print(query('!فوتبال! لیگ', word_index))
+    print(query('فوتبال !لیگ!', word_index))
