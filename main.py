@@ -1,3 +1,4 @@
+import json
 from itertools import cycle
 
 from hazm import Normalizer, word_tokenize, stopwords_list, Stemmer
@@ -20,9 +21,6 @@ def preprocess_query(query):
     normalizes and tokenizes the query.
     removes stopwords, punctuation, urls ,and stemming.
     """
-    query = re.sub(f'[{punctuation}؟،٪×÷»«]+', '', query)
-    query = re.sub(r'http\S+', '', query)
-    query = Normalizer().normalize(query)
     query = word_tokenize(query)
     query = [w for w in query if w not in stopwords_list()]
     query = [Stemmer().stem(w) for w in query]
@@ -172,14 +170,29 @@ def multiple_word_query(words, word_index):
     return dict(zip(result, ranked_result))
 
 
-def phrasal_query(phrasal_words, word_index):
+def phrasal_query(phrasal_word, word_index):
     """
     Answers to a phrasal query and sorts the results.
     """
-    return {}
+    words = phrasal_word.split()
+    posting_lists = [word_index[word] for word in words]
+    lists = [list(p['docs'].keys()) for p in posting_lists]
+    intersect_of_words_in_phrase = multi_intersect_indexes(lists)
+
+    result = {}
+    for d in intersect_of_words_in_phrase:
+        positions = [word_index[w]['docs'][d]['positions'] for w in words]
+        for p in positions[0]:
+            if all(p + i in positions[i] for i in range(1, len(positions))):
+                if d in result:
+                    result[d] += 1
+                else:
+                    result[d] = 1
+    return result
 
 
-def query(query, word_index, preprocessed=True):
+
+def query(query, word_index, preprocessed=False):
     """
     Answers a query and sorts the results.
     supported operands: 1. double quotes("") for phrasal queries.
@@ -201,7 +214,7 @@ def query(query, word_index, preprocessed=True):
 
         result = []
         if phrasal_words:
-            result = phrasal_query(phrasal_words, word_index).keys()
+            result = multi_intersect_indexes([list(phrasal_query(phrasal_word, word_index).keys()) for phrasal_word in phrasal_words])
         if other_words:
             if phrasal_words:
                 result = intersect_two_indexes(result, multiple_word_query(other_words, word_index).keys())
@@ -217,24 +230,27 @@ def query(query, word_index, preprocessed=True):
 if __name__ == '__main__':
     # Load dataframe
     df = load_df('data/raw_data.json')
-
+    # print(df.loc[6929])
     # Preprocess dataframe
-    df = preprocess_df(df[0:5], column_name='content')
+    df = preprocess_df(df.loc, column_name='content', verbose=True)
 
     # Save dataframe
-    # df.to_json('data/preprocessed_data.json')
+    df.csv('data/preprocessed_data.csv')
 
     # Create index dictionary
     word_index = create_index_dict(df, column_name='content')
-
-    # Single word query
-    print(query('فوتبال', word_index))
-    print(query('لیگ', word_index))
-
-    # Multiple word query
-    print(query('بسکتبال لیگ', word_index))
-    print(query('فوتبال لیگ', word_index))
-
-    # Excluded word query
-    print(query('!فوتبال! لیگ', word_index))
-    print(query('فوتبال !لیگ!', word_index))
+    # json.dump(word_index, open('./data/word_index.json', 'w'))
+    # with open('./data/word_index.json') as json_file:
+    #     word_index = json.load(json_file)
+    # # Single word query
+    # print(query('فوتبال', word_index))
+    # print(query('لیگ', word_index))
+    #
+    # # Multiple word query
+    # print(query('بسکتبال لیگ', word_index))
+    # print(query('فوتبال لیگ', word_index))
+    #
+    # # Excluded word query
+    # print(query('!فوتبال! لیگ', word_index))
+    # print(query('فوتبال !لیگ!', word_index))
+    print(query('"تحریم هسته‌ای" آمریکا !ایران!', word_index))
