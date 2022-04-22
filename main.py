@@ -65,17 +65,23 @@ def create_index_dict(df, column_name):
     """
     word_index = {}
     for i, row in df.iterrows():
-        for word in row[column_name].split():
+        for p, word in enumerate(row[column_name].split()):
             if word not in word_index:
                 word_index[word] = {}
                 word_index[word]['count'] = 1  # holds count of the word in all documents
-                word_index[word][i] = 1  # i holds count of the word in document i
+                word_index[word]['docs'] = {}  # holds the documents that contain the word
+                word_index[word]['docs'][i] = {}
+                word_index[word]['docs'][i]['count'] = 1  # holds count of the word in document i
+                word_index[word]['docs'][i]['positions'] = [p]  # holds the positions of the word in document i
             else:
                 word_index[word]['count'] += 1
-                if i not in word_index[word]:
-                    word_index[word][i] = 1
+                if i not in word_index[word]['docs']:
+                    word_index[word]['docs'][i] = {}
+                    word_index[word]['docs'][i]['count'] = 1
+                    word_index[word]['docs'][i]['positions'] = [p]
                 else:
-                    word_index[word][i] += 1
+                    word_index[word]['docs'][i]['count'] += 1
+                    word_index[word]['docs'][i]['positions'].append(p)
     return word_index
 
 
@@ -95,8 +101,8 @@ def single_word_query(word, word_index):
     if word not in word_index:
         return []
 
-    posting_list = word_index[word]
-    result = sorted(posting_list, key=lambda x: posting_list[x], reverse=True)
+    posting_list = word_index[word]['docs']
+    result = sorted(posting_list, key=lambda x: posting_list[x]['count'], reverse=True)
     return result
 
 
@@ -105,13 +111,14 @@ def multiple_word_query(query, word_index):
     Answers to a multiple word query and sorts the results.
     """
     posting_lists = query_to_index(query, word_index)
-    result = list(posting_lists[0].keys())
+
+    result = list(posting_lists[0]['docs'].keys())
     for posting_list in posting_lists[1:]:
-        index = list(posting_list.keys())
+        index = list(posting_list['docs'].keys())
         result = intersect_indexes(result, index)
     ranked_result = np.zeros(len(result))
     for p in posting_lists:
-        ranked_result += [p[i] for i in result]
+        ranked_result += [p['docs'][i]['count'] for i in result]
     return [x for y, x in sorted(zip(ranked_result, result), reverse=True)]
 
 
@@ -150,5 +157,5 @@ if __name__ == '__main__':
     # Single word query
     print(single_word_query('بسکتبال', word_index))
 
-    # Multiple word query
+    # # Multiple word query
     print(multiple_word_query('بسکتبال لیگ', word_index))
