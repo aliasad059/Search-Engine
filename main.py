@@ -1,6 +1,7 @@
 import json
 from itertools import cycle
 
+from matplotlib import pyplot as plt
 from hazm import Normalizer, word_tokenize, stopwords_list, Stemmer
 import numpy as np
 import pandas as pd
@@ -48,9 +49,19 @@ def preprocess_df(df, column_name, verbose=False):
     if verbose:
         print('Removing stopwords...')
     df[column_name] = df[column_name].apply(lambda x: [w for w in x if w not in stopwords_list()])
+
+    # # total number of tokens in all documents
+    # total_tokens = sum([len(x) for x in df[column_name]])
+    # print(f'Total number of tokens before stemming: {total_tokens}')
+
     if verbose:
         print('Stemming...')
     df[column_name] = df[column_name].apply(lambda x: [Stemmer().stem(w) for w in x])
+
+    # # total number of tokens in all documents
+    # total_tokens = sum([len(x) for x in df[column_name]])
+    # print(f'Total number of tokens after stemming: {total_tokens}')
+
     if verbose:
         print('Joining...')
     df[column_name] = df[column_name].apply(lambda x: ' '.join(x))
@@ -160,6 +171,8 @@ def multiple_word_query(words, word_index):
     """
     Answers to a multiple word query and sorts the results.
     """
+    words = [Stemmer().stem(w) for w in words]
+    words = [w for w in words if w not in stopwords_list()]
     try:
         posting_lists = [word_index[word] for word in words]
     except KeyError:
@@ -179,7 +192,11 @@ def phrasal_query(phrasal_word, word_index):
     Answers to a phrasal query and sorts the results.
     """
     words = phrasal_word.split()
-    posting_lists = [word_index[word] for word in words]
+    words = [Stemmer().stem(word) for word in words]
+    try:
+        posting_lists = [word_index[word] for word in words]
+    except KeyError:
+        return {}
     lists = [list(p['docs'].keys()) for p in posting_lists]
     intersect_of_words_in_phrase = multi_intersect_indexes(lists)
 
@@ -195,19 +212,18 @@ def phrasal_query(phrasal_word, word_index):
     return result
 
 
-def query(query, word_index, preprocessed=False):
+def query(query, word_index):
     """
     Answers a query and sorts the results.
     supported operands: 1. double quotes("") for phrasal queries.
                         2. ! for negation.
                         3. otherwise intersects words.
     """
-    if not preprocessed:
-        query = preprocess_query(query)
     if len(query.split()) == 1:
-        word = query.split()[0]
-        if word not in word_index:
+        word = (query.split()[0])
+        if (word not in word_index) or (word in stopwords_list()):
             return []
+        word = Stemmer().stem(word)
         posting_list = word_index[word]['docs']
         return sorted(posting_list, key=lambda x: posting_list[x]['count'], reverse=True)
     else:
@@ -218,7 +234,9 @@ def query(query, word_index, preprocessed=False):
         ranked_result = []
         result = []
         if phrasal_words:
-            result = multi_intersect_indexes([list(phrasal_query(phrasal_word, word_index).keys()) for phrasal_word in phrasal_words])
+            phrasal_words_result = [phrasal_query(phrasal_word, word_index) for phrasal_word in phrasal_words]
+            result = multi_intersect_indexes([list(p.keys()) for p in phrasal_words_result])
+            ranked_result = [p[i] for p in phrasal_words_result for i in result]
         if other_words:
             multiple_word_query_result = multiple_word_query(other_words, word_index)
             if phrasal_words:
@@ -228,9 +246,31 @@ def query(query, word_index, preprocessed=False):
             ranked_result = [multiple_word_query_result[i] for i in result]
         if excluded_words:
             for word in excluded_words:
+                word = Stemmer().stem(word)
                 if word in word_index:
+                    if not result:
+                        return []
                     result = exclude_indexes(result, list(word_index[word]['docs'].keys()))
-    return [x for y, x in sorted(zip(ranked_result,result ), reverse=True)]
+    return [x for y, x in sorted(zip(ranked_result, result), reverse=True)]
+
+
+def draw_zipf_law(word_index):
+    """
+    Draws the Zipf law.
+    """
+    tokens = list(word_index.keys())
+    counts = [word_index[w]['count'] for w in tokens]
+    ranks = np.arange(1, len(counts) + 1)
+    indices = list(reversed(np.argsort(counts)))
+    frequencies = [counts[i] for i in indices]
+    plt.figure(figsize=(8, 6))
+    plt.loglog(ranks, frequencies, marker=".")
+    plt.plot([1, frequencies[0]], [frequencies[0], 1], color='r')
+    plt.title("Zipf plot for news tokens")
+    plt.xlabel("Frequency rank of token")
+    plt.ylabel("Absolute frequency of token")
+    plt.grid(True)
+    plt.show()
 
 
 if __name__ == '__main__':
@@ -247,6 +287,8 @@ if __name__ == '__main__':
 
     # Create index dictionary
     word_index = create_index_dict(df, column_name='content')
+    # print(word_index['ایر'])
+    # draw_zipf_law(word_index)
     # json.dump(word_index, open('./data/word_index.json', 'w'))
     # with open('./data/word_index.json') as json_file:
     #     word_index = json.load(json_file)
@@ -261,7 +303,7 @@ if __name__ == '__main__':
     # print(query('!فوتبال! لیگ', word_index))
     # print(query('فوتبال !لیگ!', word_index))
 
-    print(query('لیگ', word_index))
+    # print(query('لیگ', word_index))
     print(query('تحریم‌های آمریکا علیه ایران', word_index))
     print(query('تحریم‌های آمریکا !ایران!', word_index))
     print(query('"کنگره ضدتروریست"', word_index))
