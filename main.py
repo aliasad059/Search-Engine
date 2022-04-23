@@ -160,7 +160,11 @@ def multiple_word_query(words, word_index):
     """
     Answers to a multiple word query and sorts the results.
     """
-    posting_lists = [word_index[word] for word in words]
+    try:
+        posting_lists = [word_index[word] for word in words]
+    except KeyError:
+        return {}
+
     lists = [list(p['docs'].keys()) for p in posting_lists]
     result = multi_intersect_indexes(lists)
     ranked_result = np.zeros(len(result))
@@ -191,7 +195,6 @@ def phrasal_query(phrasal_word, word_index):
     return result
 
 
-
 def query(query, word_index, preprocessed=False):
     """
     Answers a query and sorts the results.
@@ -212,30 +215,35 @@ def query(query, word_index, preprocessed=False):
         excluded_words = re.findall(r'!(.*?)!', query)
         other_words = re.sub(r'"(.*?)"|!(.*?)!', '', query).split()
 
+        ranked_result = []
         result = []
         if phrasal_words:
             result = multi_intersect_indexes([list(phrasal_query(phrasal_word, word_index).keys()) for phrasal_word in phrasal_words])
         if other_words:
+            multiple_word_query_result = multiple_word_query(other_words, word_index)
             if phrasal_words:
-                result = intersect_two_indexes(result, multiple_word_query(other_words, word_index).keys())
+                result = intersect_two_indexes(result, list(multiple_word_query_result.keys()))
             else:
-                result = list(multiple_word_query(other_words, word_index).keys())
+                result = list(multiple_word_query_result.keys())
+            ranked_result = [multiple_word_query_result[i] for i in result]
         if excluded_words:
             for word in excluded_words:
                 if word in word_index:
                     result = exclude_indexes(result, list(word_index[word]['docs'].keys()))
-    return result
+    return [x for y, x in sorted(zip(ranked_result,result ), reverse=True)]
 
 
 if __name__ == '__main__':
     # Load dataframe
-    df = load_df('data/raw_data.json')
-    # print(df.loc[6929])
-    # Preprocess dataframe
-    df = preprocess_df(df.loc, column_name='content', verbose=True)
+    # df = load_df('data/raw_data.json')
+    # # print(df.loc[6929])
+    # # Preprocess dataframe
+    # df = preprocess_df(df, column_name='content', verbose=True)
+    #
+    # # Save dataframe
+    # df.to_csv('data/preprocessed_data.csv')
 
-    # Save dataframe
-    df.csv('data/preprocessed_data.csv')
+    df = pd.read_csv('data/preprocessed_data.csv')
 
     # Create index dictionary
     word_index = create_index_dict(df, column_name='content')
@@ -244,7 +252,6 @@ if __name__ == '__main__':
     #     word_index = json.load(json_file)
     # # Single word query
     # print(query('فوتبال', word_index))
-    # print(query('لیگ', word_index))
     #
     # # Multiple word query
     # print(query('بسکتبال لیگ', word_index))
@@ -253,4 +260,10 @@ if __name__ == '__main__':
     # # Excluded word query
     # print(query('!فوتبال! لیگ', word_index))
     # print(query('فوتبال !لیگ!', word_index))
+
+    print(query('لیگ', word_index))
+    print(query('تحریم‌های آمریکا علیه ایران', word_index))
+    print(query('تحریم‌های آمریکا !ایران!', word_index))
+    print(query('"کنگره ضدتروریست"', word_index))
     print(query('"تحریم هسته‌ای" آمریکا !ایران!', word_index))
+    print(query('اورشلیم !صهیونیست!', word_index))
