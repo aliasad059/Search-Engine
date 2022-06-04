@@ -74,6 +74,7 @@ def create_index_dict(df, column_name):
     """
     Creates a dictionary of word indexes.
     """
+    print('Creating index...')
     word_index = {}
     for i, row in df.iterrows():
         for p, word in enumerate(row[column_name].split()):
@@ -93,10 +94,13 @@ def create_index_dict(df, column_name):
                 else:
                     word_index[word]['docs'][i]['count'] += 1
                     word_index[word]['docs'][i]['positions'].append(p)
+    print('Done.')
 
+    print('Creating champion index...')
     for word in word_index:  # add champions list to each word
         champ_list = sorted(word_index[word]['docs'], key=lambda x: word_index[word]['docs'][x]['count'], reverse=True)
         word_index[word]['champions'] = champ_list[:len(champ_list) // 2]
+    print('Done.')
 
     return word_index
 
@@ -289,14 +293,18 @@ def ranked_retrieval_query(query, word_index, k, N, use_champion_list=False):
     """
     Returns the top k documents that are most similar to the query.
     """
+    words = query.split()
+    words = [Stemmer().stem(w) for w in words]
+    words = [w for w in words if w not in stopwords_list()]
+    query_index = dict(collections.Counter(words))
+
     scores = np.zeros(N)
-    query_index = dict(collections.Counter(query.split()))
     for word in query_index:
         if word in word_index:
             docs = word_index[word]['docs']
             if use_champion_list:
                 champions_list = word_index[word]['champions']
-                docs = {k: v for k, v in docs if k in champions_list}
+                docs = {k: v for k, v in docs.items() if k in champions_list}
             idf = N / len(docs)
             wtq = get_tf_idf(query_index[word], idf)
             for d in docs:
@@ -340,9 +348,25 @@ if __name__ == '__main__':
     # word_index = load_index('./data/word_index.json')
 
     # draw_zipf_law(word_index)
-
+    # simple local search
     print(query('تحریم‌های آمریکا علیه ایران', word_index))
     print(query('تحریم‌های آمریکا !ایران!', word_index))
     print(query('"کنگره ضدتروریست"', word_index))
     print(query('"تحریم هسته‌ای" آمریکا !ایران!', word_index))
     print(query('اورشلیم !صهیونیست!', word_index))
+
+    # ranked retrieval search
+    print(ranked_retrieval_query('لیگ', word_index, k=10, N=len(df)))
+    print(ranked_retrieval_query('لیگ', word_index, k=10, N=len(df), use_champion_list=True))
+    print(ranked_retrieval_query('جدول رده‌بندی لیگ', word_index, k=10, N=len(df)))
+    print(ranked_retrieval_query('جدول رده‌بندی لیگ', word_index, k=10, N=len(df), use_champion_list=True))
+    print(ranked_retrieval_query('سایپا', word_index, k=10, N=len(df)))
+    print(ranked_retrieval_query('سایپا', word_index, k=10, N=len(df), use_champion_list=True))
+    print(ranked_retrieval_query(' بودجه سالیانه شهرداری', word_index, k=10, N=len(df)))
+    print(ranked_retrieval_query(' بودجه سالیانه شهرداری', word_index, k=10, N=len(df), use_champion_list=True))
+
+    # compare ranked retrieval search and simple local search
+    print(query('جدول رده‌بندی لیگ', word_index))
+    print(ranked_retrieval_query('جدول رده‌بندی لیگ', word_index, k=10, N=len(df)))
+    print(query(' بودجه سالیانه شهرداری', word_index))
+    print(ranked_retrieval_query(' بودجه سالیانه شهرداری', word_index, k=10, N=len(df)))
