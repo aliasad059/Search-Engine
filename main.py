@@ -1,6 +1,6 @@
 import json
 from itertools import cycle
-
+import collections
 from matplotlib import pyplot as plt
 from hazm import Normalizer, word_tokenize, stopwords_list, Stemmer
 import numpy as np
@@ -271,6 +271,33 @@ def draw_zipf_law(word_index):
     plt.ylabel("Absolute frequency of token")
     plt.grid(True)
     plt.show()
+
+
+def get_tf_idf_vector(word_index, word, N):
+    """
+    Returns the tf-idf vector for a word.
+    """
+    posting_list = word_index[word]['docs']
+    tf_idf_vector = np.zeros(N)
+    idf = np.log10(N / len(posting_list))
+    for doc in posting_list:
+        tf_idf_vector[doc] = (1 + np.log10(posting_list[doc]['count'])) * idf
+    return tf_idf_vector, idf
+
+
+def cosine_similarity(query, word_index, k, N):
+    """
+    Returns the top k documents that are most similar to the query.
+    """
+    query_dict = dict(collections.Counter(query.split()))
+    scores = np.zeros(N)
+    for word in query_dict:
+        if word in word_index:
+            wtd, idf = get_tf_idf_vector(word_index, word, N)
+            wtq = (1 + np.log10(query_dict[word])) * idf
+            scores += wtd * wtq
+    indices = np.argsort(scores)[::-1]
+    return indices[:k]
 
 
 if __name__ == '__main__':
