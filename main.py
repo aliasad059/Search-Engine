@@ -273,29 +273,27 @@ def draw_zipf_law(word_index):
     plt.show()
 
 
-def get_tf_idf_vector(word_index, word, N):
+def get_tf_idf(tf, idf):
     """
-    Returns the tf-idf vector for a word.
+    Returns the tf-idf of a term.
     """
-    posting_list = word_index[word]['docs']
-    tf_idf_vector = np.zeros(N)
-    idf = np.log10(N / len(posting_list))
-    for doc in posting_list:
-        tf_idf_vector[doc] = (1 + np.log10(posting_list[doc]['count'])) * idf
-    return tf_idf_vector, idf
+    return (1 + (np.log10(tf))) * np.log10(idf)
 
 
 def cosine_similarity(query, word_index, k, N):
     """
     Returns the top k documents that are most similar to the query.
     """
-    query_dict = dict(collections.Counter(query.split()))
     scores = np.zeros(N)
-    for word in query_dict:
+    query_index = dict(collections.Counter(query.split()))
+    for word in query_index:
         if word in word_index:
-            wtd, idf = get_tf_idf_vector(word_index, word, N)
-            wtq = (1 + np.log10(query_dict[word])) * idf
-            scores += wtd * wtq
+            docs = word_index[word]['docs']
+            idf = N / len(docs)
+            wtq = get_tf_idf(query_index[word], idf)
+            for d in docs:
+                wtd = get_tf_idf(docs[d]['count'], idf)
+                scores[d] += wtq * wtd
     indices = np.argsort(scores)[::-1]
     return indices[:k]
 
