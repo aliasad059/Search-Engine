@@ -306,37 +306,41 @@ def ranked_retrieval_query(query, word_index, k, N, use_champion_list=False):
     return indices[:k]
 
 
+def save_index(word_index, file_name):
+    """
+    Saves the index to a file.
+    """
+    with open(file_name, 'wb') as f:
+        json.dump(word_index, open('./data/word_index.json', 'w'))
+
+
+def load_index(file_name):
+    """
+    Loads the index from a file.
+    """
+    with open(file_name, 'rb') as f:
+        return json.load(f)
+
+
 if __name__ == '__main__':
-    # Load dataframe
+    # UNCOMMENT to do preprocessing and save it to a file
+    # # Load dataframe from json raw data file
     # df = load_df('data/raw_data.json')
-    # # print(df.loc[6929])
     # # Preprocess dataframe
     # df = preprocess_df(df, column_name='content', verbose=True)
-    #
     # # Save dataframe
     # df.to_csv('data/preprocessed_data.csv')
 
+    # Load preprocessed dataframe
     df = pd.read_csv('data/preprocessed_data.csv')
 
     # Create index dictionary
     word_index = create_index_dict(df, column_name='content')
-    # print(word_index['ایر'])
-    # draw_zipf_law(word_index)
-    # json.dump(word_index, open('./data/word_index.json', 'w'))
-    # with open('./data/word_index.json') as json_file:
-    #     word_index = json.load(json_file)
-    # # Single word query
-    # print(query('فوتبال', word_index))
-    #
-    # # Multiple word query
-    # print(query('بسکتبال لیگ', word_index))
-    # print(query('فوتبال لیگ', word_index))
-    #
-    # # Excluded word query
-    # print(query('!فوتبال! لیگ', word_index))
-    # print(query('فوتبال !لیگ!', word_index))
+    # save_index(word_index, './data/word_index.json')
+    # word_index = load_index('./data/word_index.json')
 
-    # print(query('لیگ', word_index))
+    # draw_zipf_law(word_index)
+
     print(query('تحریم‌های آمریکا علیه ایران', word_index))
     print(query('تحریم‌های آمریکا !ایران!', word_index))
     print(query('"کنگره ضدتروریست"', word_index))
