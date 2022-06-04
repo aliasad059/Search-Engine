@@ -93,6 +93,11 @@ def create_index_dict(df, column_name):
                 else:
                     word_index[word]['docs'][i]['count'] += 1
                     word_index[word]['docs'][i]['positions'].append(p)
+
+    for word in word_index:  # add champions list to each word
+        champ_list = sorted(word_index[word]['docs'], key=lambda x: word_index[word]['docs'][x]['count'], reverse=True)
+        word_index[word]['champions'] = champ_list[:len(champ_list) // 2]
+
     return word_index
 
 
@@ -280,7 +285,7 @@ def get_tf_idf(tf, idf):
     return (1 + (np.log10(tf))) * np.log10(idf)
 
 
-def cosine_similarity(query, word_index, k, N):
+def ranked_retrieval_query(query, word_index, k, N, use_champion_list=False):
     """
     Returns the top k documents that are most similar to the query.
     """
@@ -289,6 +294,9 @@ def cosine_similarity(query, word_index, k, N):
     for word in query_index:
         if word in word_index:
             docs = word_index[word]['docs']
+            if use_champion_list:
+                champions_list = word_index[word]['champions']
+                docs = {k: v for k, v in docs if k in champions_list}
             idf = N / len(docs)
             wtq = get_tf_idf(query_index[word], idf)
             for d in docs:
